@@ -10,8 +10,59 @@ from typing import Callable
 from tensorflow_probability import distributions as tfd
 import jraph
 
+from emmd.utils import grid
+
 
 # ------------------------------------ ERGODIC METRIC ------------------------------------ #
+def ergodic_basis_fn(k_vec, traj, lengths, grids, dxdy):
+    # coefficients
+    fk_vals = jnp.prod(jnp.cos(jnp.pi * k_vec / lengths * traj), axis=1)
+    hk = jnp.sqrt(jnp.sum(jnp.square(jnp.prod(jnp.cos(
+        jnp.pi * k_vec / lengths * grids), axis=1
+    ))) * jnp.prod(dxdy))
+    fk_vals /= hk
+    
+    # integral
+    ck = jnp.sum(fk_vals) * 1 / len(traj)
+    return ck
+
+
+def reconstruction_basis_fn(k_vec, lengths, grids, dxdy):
+    fk_vals = jnp.prod(jnp.cos(jnp.pi * k_vec / lengths * grids), axis=1)
+    hk = jnp.sqrt(jnp.sum(jnp.square(fk_vals)) * jnp.prod(dxdy))
+    fk_vals /= hk
+    return fk_vals
+
+
+def ergodic_metric(trajectory, bounds, n_modes, n_per_dim=100):
+    n, d = trajectory.shape
+    lengths = jnp.abs(bounds[1] - bounds[0])
+
+    # data grids
+    grids = grid(bounds, n_per_dim)
+    dxdy = lengths / (jnp.array([n_per_dim] * d) -1)
+
+    # create indices
+    axes = [jnp.arange(n_modes) for _ in range(d)]
+    inds = jnp.meshgrid(*axes)
+    inds = jnp.stack(inds, axis=-1).reshape(-1, d)
+
+    # create basis functions
+    coefficients = jax.vmap(
+        lambda k_vec: ergodic_basis_fn(k_vec, trajectory, lengths, grids, dxdy)
+    )(inds)
+
+    # reconstruct pdf
+    # return reconstruction_basis_fn(inds[0], lengths, grids, dxdy)
+    pdf_recon = jax.vmap(
+        lambda k_vec: reconstruction_basis_fn(k_vec, lengths, grids, dxdy)
+    )(inds)
+    
+    pdf_recon = pdf_recon * coefficients[:, None]
+    pdf_recon = jnp.sum(pdf_recon, axis=0)
+
+    return pdf_recon
+
 
 
 

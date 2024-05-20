@@ -9,6 +9,7 @@ from plyfile import PlyData
 import pyvista as pv
 import numpy as np
 
+
 # ------------------------------------ MESH UTILITIES ------------------------------------ #
 def o3d_mesh_to_pv(mesh):
     mesh = PlyData.read(mesh.path)
@@ -131,10 +132,3 @@ def knn_graph(points, k, directed=True):
 
 
 # ----------------------------------- PLOTTING HELPERS ----------------------------------- #
-def plot_2d_mesh(graph, ax=None, **kwargs):
-    import matplotlib.pyplot as plt
-
-    if ax is None:
-        fig, ax = plt.subplots()
-    ax.triplot(graph.nodes[:, 0], graph.nodes[:, 1], graph.edges, **kwargs)
-    return ax

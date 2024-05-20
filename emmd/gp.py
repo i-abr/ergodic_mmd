@@ -1,7 +1,6 @@
 # ---------------------------------------------------------------------------------------- #
 #                                EQUINOX GP IMPLEMENTATIONS                                #
 # ---------------------------------------------------------------------------------------- #
-
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -183,40 +182,3 @@ def lgcp_posterior(key, k, X, y, volumes, diag=1e-4, n_samples=100, n_burnin=1_0
     states, tota_pct_accepted = inference_loop(sample_key, 0.5, initial_state, n_samples, n_burnin)
     
     return states.position
-
-
-# -------------------------------------- DEPRECATED -------------------------------------- #
-# def lgcp_posterior(k, f, centroids, counts, volumes, diag=1e-4):
-#     #### log gp prior of latent f
-#     K = k(centroids, centroids) + jnp.eye(centroids.shape[0]) * diag
-#     n = f.shape[0]
-#     L = jnp.linalg.cholesky(K)
-#     alpha = jnp.linalg.solve(L.T, jnp.linalg.solve(L, f))
-#     term1 = -0.5 * jnp.dot(f.T, alpha)
-#     term2 = -jnp.sum(jnp.log(jnp.diag(L)))
-#     term3 = -0.5 * n * jnp.log(2 * jnp.pi)
-#     log_gp_prior = term1 + term2 + term3
-
-#     #### log likelihood of poisson
-#     intensity = jnp.exp(f)
-#     rates = intensity * volumes
-#     log_likelihood = jax.scipy.stats.poisson.logpmf(counts, rates).sum()
-#     return log_gp_prior + log_likelihood
-
-
-# def make_lgcp_logdensity_fn(key, k, centroids, counts, volumes, diag=1e-4):
-#     k_params, k_static = trainable(k, lambda t: t.transform.scale)
-#     # k_flat, k_tree_def = tree_flatten(k_params)
-#     f_init = jax.random.normal(key, (centroids.shape[0],))
-#     # params = (f_init, k_flat)
-#     params = (f_init, k_params)
-
-#     def _inference_fn(f, k_params):
-#         # k = tree_unflatten(k_tree_def, k_params)
-#         k = eqx.combine(k_params, k_static)
-
-#         return lgcp_posterior(k, f, centroids, counts, volumes, diag=diag)
-
-#     inference_fn = lambda x: _inference_fn(**x)
-
-#     return inference_fn

@@ -194,12 +194,6 @@ def train_mmd_kernel_gp(key, model, X, y, to_train, epochs, opt=None, lowrank=Fa
     else:
         nll_fn = gp_nll
 
-    # #### data
-    # batch_size = kwargs.get("batch_size", None)
-    # shuffle = kwargs.get("shuffle", True)
-    # data = make_dataloader(key, samples, model.w.shape[0], batch_size=batch_size, shuffle=shuffle)
-    # batches = jnp.array([batch[0] for batch in data])
-
     #### optimizer
     if opt is None:
         lr = kwargs.get("lr", 1e-3)
@@ -235,65 +229,6 @@ def train_mmd_kernel_gp(key, model, X, y, to_train, epochs, opt=None, lowrank=Fa
     return model, jnp.array(loss_vals)
 
 
-def train_mmd_kernel_lgcp(
-        key, model, centroids, counts, volumes, to_train, epochs, 
-        opt=None, lowrank=False, n_samples=1, **kwargs
-        ):
-    
-    # parameters
-    model = deepcopy(model)
-    diag = kwargs.get("diag", 1e-5)
-    params, static = trainable(model, to_train)
-    if lowrank:
-        raise NotImplementedError("Low rank GP not implemented for LGCP.")
-    else:
-        nll_fn = lgcp_nll
-
-    #### optimizer
-    if opt is None:
-        lr = kwargs.get("lr", 1e-3)
-        schedule = optax.warmup_cosine_decay_schedule(
-            init_value=lr / 10, 
-            peak_value=lr,
-            warmup_steps= epochs // 10,
-            decay_steps= epochs
-        )
-        opt = optax.adamw(learning_rate=schedule)
-    opt_state = opt.init(params)
-
-    #### define an opt step
-    @jax.jit
-    def opt_step(key, _params, _opt_state):
-        @jax.value_and_grad
-        def loss_fn(_params_):
-            _model = eqx.combine(_params_, static)
-            nll_loss = nll_fn(
-                key, _model.k, centroids, counts, volumes, 
-                diag=diag, n_samples=n_samples
-            )
-
-            return nll_loss
-
-        loss, grads = loss_fn(_params)
-        updates, _opt_state = opt.update(grads, _opt_state , params=_params)
-        _params = optax.apply_updates(_params, updates)
-        return _params, _opt_state, loss
-
-    # loop over epochs
-    verbose = kwargs.get("verbose", False)
-    print_iter = kwargs.get("print_iter", 50)
-    loss_vals = []
-    for epoch in range(epochs):
-        key, subkey = jax.random.split(key)
-        params, opt_state, loss = opt_step(key, params, opt_state)
-        loss_vals.append(loss)
-
-        # # print output
-        if verbose and epoch % print_iter == 0:
-            print(f"epoch {epoch},loss: {loss}")
-
-    model = eqx.combine(params, static)
-    return model, jnp.array(loss_vals)
 
 
 # ---------------------------------- TRAJECTORY TRAINING --------------------------------- #
@@ -321,7 +256,6 @@ def train_mmd_jaxopt(key, model, samples, bounds=None, aux_loss=None, **kwargs):
     if opt_params is None:
         # opt_params = {"tol": 1e-4, "maxiter": 10_000}
         opt_params = {}
-    print(opt_params)
 
     #### bounds
     if bounds is not None:
@@ -453,161 +387,5 @@ def train_mmd_optax(key, model, samples, epochs, aux_loss, **kwargs):
 #         if verbose and epoch % print_iter == 0:
 #             print(f"epoch {epoch},loss: {loss}")
 
-#     model = eqx.combine(params, static)
-#     return model, jnp.array(loss_vals)
-
-
-# def train_mmd_grad_kernel(key, model, samples, to_train, epochs, opt=None, **kwargs):
-#     # parameters
-#     model = deepcopy(model)
-#     params, static = trainable(model, to_train)
-
-#     #### optimizer
-#     if opt is None:
-#         lr = kwargs.get("lr", 1e-3)
-#         opt = optax.adamw(lr)
-#     opt_state = opt.init(params)
-
-#     #### define an opt step
-#     @jax.jit
-#     def opt_step(_params, _opt_state):
-#         @jax.value_and_grad
-#         def loss_fn(_params):
-#             _model = eqx.combine(_params, static)
-
-#             @jax.grad
-#             def inner_loss(_particles):
-#                 mmd_val = _model.two_sample_mmd(_particles, samples)
-#                 return mmd_val
-
-#             particle_grads = inner_loss(_model.w)
-#             mmd_grad = jnp.mean(particle_grads**2)
-#             return mmd_grad
-
-#         loss, grads = loss_fn(_params)
-#         updates, _opt_state = opt.update(grads, _opt_state , params=_params)
-#         _params = optax.apply_updates(_params, updates)
-#         return _params, _opt_state, loss
-
-#     # loop over epochs
-#     verbose = kwargs.get("verbose", False)
-#     print_iter = kwargs.get("print_iter", 50)
-#     loss_vals = []
-#     for epoch in range(epochs):
-#         params, opt_state, loss = opt_step(params, opt_state)
-#         loss_vals.append(loss)
-
-#         # # print output
-#         if verbose and epoch % print_iter == 0:
-#             print(f"epoch {epoch},loss: {loss}")
-
-#     model = eqx.combine(params, static)
-#     return model, jnp.array(loss_vals)
-
-
-
-# def train_mmd_joint(key, model, samples, to_train, bounds, aux_loss=None, **kwargs):
-#     #### parameters
-#     _to_train = lambda t: [*to_train(t), t.w]
-#     params, static = trainable(model, _to_train)
-
-#     #### bounds
-#     n_p = model.w.shape[0]
-#     lb = eqx.tree_at(lambda t: t.w, params, jnp.tile(bounds[0], (n_p, 1)))
-#     ub = eqx.tree_at(lambda t: t.w, params, jnp.tile(bounds[1], (n_p, 1)))
-#     bounds = (lb, ub)
-    
-#     #### additional loss terms
-#     if aux_loss is None:
-#         aux_loss = lambda _samples: jnp.zeros(1)
-
-#     #### define an opt step
-#     @jax.jit
-#     def loss_fn(params):
-#         _model = eqx.combine(params, static)
-#         mmd_val = _model(samples)
-#         return mmd_val + aux_loss(_model.w)
-
-#     #### optimizer
-#     tol = kwargs.get("tol", 1e-4)
-#     maxiter = kwargs.get("epochs", 10_000)
-#     solver = jaxopt.LBFGSB(fun=loss_fn, maxiter=maxiter, tol=tol)
-#     # res = solver.run(params, bounds=bounds)
-#     params, state = solver.run(params, bounds=bounds)
-#     model = eqx.combine(params, static)
-
-#     return model, state
-
-# # ------------------------------------- LOW RANK FIT ------------------------------------- #
-# @jax.jit
-# def dropout_lrgp(lrgp, key, sigma):
-#     key, subkey = jax.random.split(key)
-#     w = lrgp.kernel.kernel.w
-#     dropout_mult = jnp.where(
-#         sigma > 0., 
-#         jnp.ones_like(w) + jax.random.normal(subkey, w.shape) * sigma, 
-#         jnp.ones_like(w)
-#     )
-#     w_dropout = w * dropout_mult
-#     lrgp = eqx.tree_at(lambda t: t.kernel.kernel.w, lrgp, w_dropout)
-#     return lrgp
-
-
-# def fit_lrgp(gp, y, epochs, to_train=None, dropout=0., **kwargs):
-#     #### extract hyperparameters
-#     lr = kwargs.pop("lr", 1e-3)
-#     dropout_key = kwargs.pop("dropout_key", jax.random.PRNGKey(0))
-#     dkeys = jax.random.split(dropout_key, epochs)
-
-#     #### define trainable parameters
-#     if to_train is not None:
-#         param_fn = lambda t: trainable(t, to_train)
-#     else:
-#         param_fn = lambda t: freeze(t, lambda _t: _t.X)
-
-#     #### define and initialize optimizer
-#     # opt = optax.adamw(lr)
-#     # params, static = param_fn(gp)
-#     schedule = optax.warmup_cosine_decay_schedule(
-#         init_value=0.0,
-#         peak_value=lr,
-#         warmup_steps=50,
-#         decay_steps=epochs - epochs // 10,
-#         end_value=kwargs.pop("lr_min", 5e-5),
-#     )
-
-#     opt = optax.adamw(learning_rate=schedule)
-#     params, static = param_fn(gp)
-
-#     #### define an opt step
-#     @eqx.filter_jit
-#     # def opt_step(params, dropout_params, opt_state):
-#     def opt_step(params, opt_state, dkey):
-#         @jax.value_and_grad
-#         def loss_fn(_params):
-#             model = eqx.combine(_params, static)
-#             model = dropout_lrgp(model, dkey, dropout)
-#             return model.nll(y)
-
-#         # loss, grads = loss_fn(dropout_params)  # dropout_params loss
-#         loss, grads = loss_fn(params)
-#         updates, opt_state = opt.update(grads, opt_state, params=params)
-#         params = optax.apply_updates(params, updates)
-#         return params, opt_state, loss
-
-#     #### loop over epochs
-#     opt_state = opt.init(params)
-#     verbose = kwargs.get("verbose", False)
-#     print_iter = kwargs.get("print_iter", 50)
-#     loss_vals = []
-#     for epoch in range(epochs):
-#         params, opt_state, loss = opt_step(params, opt_state, dkeys[epoch])
-#         loss_vals.append(loss)
-
-#         # # print output
-#         if verbose and epoch % print_iter == 0:
-#             print(f"epoch {epoch},loss: {loss}")
-
-#     # return model
 #     model = eqx.combine(params, static)
 #     return model, jnp.array(loss_vals)
