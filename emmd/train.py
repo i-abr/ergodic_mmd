@@ -15,7 +15,7 @@ import jax_dataloader as jdl
 from copy import deepcopy
 
 from emmd.gp import lrgp_nll, gp_nll, lgcp_nll
-from emmd.score import ScoreDensity
+from emmd.score import ScoreKernel
 
 # -------------------------------------- PARAMETERS -------------------------------------- #
 def freeze(model, frozen_fn):
@@ -129,13 +129,17 @@ def train_mmd_kernel_score(key, mmd_model, samples, to_train, epochs, opt=None, 
     k = mmd_model.k
     R = kwargs.get("R", 100)
     z = deepcopy(jax.random.choice(key, samples, (R,), replace=False))
-    mu = kwargs.get("mu", None)
-    sigma = kwargs.get("sigma", None)
-    model = ScoreDensity(key, deepcopy(k), z, mu=mu, sigma=sigma)
+    L = kwargs.get("L", jnp.array(1e-4))
+    q = kwargs.get("q", "normal")
+    q_params = kwargs.get("q_params", None)
+    model = ScoreKernel(key, deepcopy(k), z, q=q, q_params=q_params, L=L)
     params, static = trainable(model, to_train)
 
     #### data
-    batch_size = kwargs.get("batch_size", R)
+    def next_power_of_2(x):  
+        return 1 if x == 0 else 2**(x - 1).bit_length()
+
+    batch_size = kwargs.get("batch_size", len(samples))
     shuffle = kwargs.get("shuffle", True)
     data_loader = jdl.DataLoader(
         jdl.ArrayDataset(samples), 'jax', 
@@ -143,9 +147,16 @@ def train_mmd_kernel_score(key, mmd_model, samples, to_train, epochs, opt=None, 
     )
 
     #### optimizer
+    lr = kwargs.get("lr", 1e-3)
     if opt is None:
-        lr = kwargs.get("lr", 1e-3)
-        opt = optax.adamw(lr)
+        schedule = optax.warmup_cosine_decay_schedule(
+            init_value=lr / 10,
+            peak_value=lr,
+            decay_steps=epochs,
+            end_value=lr / 10**3,
+            warmup_steps=epochs // 10
+        )
+        opt = optax.adamw(learning_rate=schedule)
     opt_state = opt.init(params)
 
     #### define an opt step
@@ -235,6 +246,8 @@ def train_mmd_kernel_gp(key, model, X, y, to_train, epochs, opt=None, lowrank=Fa
 def train_mmd(key, model, samples, bounds=None, aux_loss=None, optimizer="LBFGS", **kwargs):
     #### additional loss terms
     if aux_loss is None:
+        print("No aux loss")
+    if aux_loss is None:
         aux_loss = lambda _samples: 0.
     
     if optimizer == "LBFGS":
@@ -256,6 +269,7 @@ def train_mmd_jaxopt(key, model, samples, bounds=None, aux_loss=None, **kwargs):
     if opt_params is None:
         # opt_params = {"tol": 1e-4, "maxiter": 10_000}
         opt_params = {}
+    print(opt_params)
 
     #### bounds
     if bounds is not None:
@@ -290,9 +304,17 @@ def train_mmd_optax(key, model, samples, epochs, aux_loss, **kwargs):
 
     #### optimizer
     opt = kwargs.get("opt", None)
+    lr = kwargs.get("lr", 1e-2)
     if opt is None:
-        lr = kwargs.get("lr", 1e-3)
-        opt = optax.adamw(lr)
+        schedule = kwargs.get("schedule", None)
+        schedule = optax.warmup_cosine_decay_schedule(
+            init_value=lr / 10,
+            peak_value=lr,
+            decay_steps=epochs,
+            end_value=lr / 10**3,
+            warmup_steps=epochs // 10
+        )
+        opt = optax.adamw(learning_rate=schedule)
     opt_state = opt.init(params)
 
     #### define an opt step
@@ -312,15 +334,16 @@ def train_mmd_optax(key, model, samples, epochs, aux_loss, **kwargs):
 
     # loop over epochs
     verbose = kwargs.get("verbose", False)
-    print_iter = kwargs.get("print_iter", 50)
+    print_iter = kwargs.get("print_iter", 100)
     loss_vals = []
+    # return opt_step(params, opt_state)
     for epoch in range(epochs):
         params, opt_state, loss = opt_step(params, opt_state)
         loss_vals.append(loss)
 
         # # print output
         if verbose and epoch % print_iter == 0:
-            print(f"epoch {epoch},loss: {loss}")
+            print(f"epoch {epoch}, mmd loss: {loss[1]}, aux loss: {loss[2]}")
 
     model = eqx.combine(params, static)
     return model, jnp.array(loss_vals)

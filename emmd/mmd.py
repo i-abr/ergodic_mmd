@@ -65,8 +65,6 @@ def ergodic_metric(trajectory, bounds, n_modes, n_per_dim=100):
 
 
 
-
-
 # ------------------------------------ POINT CLOUD MMD ----------------------------------- #
 class ImpCloudMMD(eqx.Module):
     """Implicit p(x) MMD for point clouds."""

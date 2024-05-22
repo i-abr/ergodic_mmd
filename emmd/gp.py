@@ -32,7 +32,6 @@ def gp_nll(k, X, y, diag=1e-4):
     term3 = 0.5 * n * jnp.log(2 * jnp.pi)
     return term1 + term2 + term3
 
-
 def gp_pred(k, X, y, X_test, diag=1e-4):
     K = k(X, X) + jnp.eye(X.shape[0]) * diag
     K_star = k(X, X_test)

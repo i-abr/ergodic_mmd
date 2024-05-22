@@ -27,6 +27,24 @@ def min_max_dist(X):
     return min_dist, max_dist
 
 
+class RBF(eqx.Module):
+    scale: Float[Array, "d"]
+
+    def __init__(self, scale):
+        self.scale = jnp.log(scale)
+
+    @property
+    def _scale(self):
+        return jnp.exp(self.scale)
+    
+    @jit
+    def __call__(self, x1: jax.Array, x2: jax.Array) -> jax.Array:
+        x1 = x1 / self._scale
+        x2 = x2 / self._scale
+        delta = x1[:, None, :] - x2[None, :, :]
+        return jnp.exp(-0.5 * jnp.sum(delta**2, axis=-1))
+
+
 # -------------------------------------- RFF KERNEL -------------------------------------- #
 class RFF(tinygp.kernels.base.Kernel):
     w: Float[Array, "R d"]
