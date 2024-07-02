@@ -15,7 +15,6 @@ import jax_dataloader as jdl
 from copy import deepcopy
 
 from emmd.gp import lrgp_nll, gp_nll, lgcp_nll
-from emmd.score import ScoreKernel
 
 # -------------------------------------- PARAMETERS -------------------------------------- #
 def freeze(model, frozen_fn):
@@ -124,22 +123,22 @@ def train_mmd_kernel(key, model, samples, to_train, epochs, opt=None, **kwargs):
 
 
 # ------------------------------------ SCORE MATCHING ------------------------------------ #
-def train_mmd_kernel_score(key, mmd_model, samples, to_train, epochs, opt=None, **kwargs):
+def train_mmd_kernel_score(key, model, samples, to_train, epochs, opt=None, **kwargs):
     # parameters
-    k = mmd_model.k
-    R = kwargs.get("R", 100)
-    z = deepcopy(jax.random.choice(key, samples, (R,), replace=False))
-    L = kwargs.get("L", jnp.array(1e-4))
-    q = kwargs.get("q", "normal")
-    q_params = kwargs.get("q_params", None)
-    model = ScoreKernel(key, deepcopy(k), z, q=q, q_params=q_params, L=L)
+    train_alpha = kwargs.get("train_alpha", True)
+    if train_alpha:
+        def update_alpha(X, params, static):
+            model = eqx.combine(params, static)
+            new_alpha = model.compute_alpha(X)
+            new_model = eqx.tree_at(lambda t: t.alpha, model, new_alpha)
+            new_params, new_static = trainable(new_model, to_train)
+            return new_params, new_static
+    else:
+        update_alpha = lambda X, params, not_static: params, static
+
     params, static = trainable(model, to_train)
 
-    #### data
-    def next_power_of_2(x):  
-        return 1 if x == 0 else 2**(x - 1).bit_length()
-
-    batch_size = kwargs.get("batch_size", len(samples))
+    batch_size = kwargs.get("batch_size", 256)
     shuffle = kwargs.get("shuffle", True)
     data_loader = jdl.DataLoader(
         jdl.ArrayDataset(samples), 'jax', 
@@ -149,37 +148,55 @@ def train_mmd_kernel_score(key, mmd_model, samples, to_train, epochs, opt=None, 
     #### optimizer
     lr = kwargs.get("lr", 1e-3)
     if opt is None:
-        schedule = optax.warmup_cosine_decay_schedule(
-            init_value=lr / 10,
-            peak_value=lr,
-            decay_steps=epochs,
-            end_value=lr / 10**3,
-            warmup_steps=epochs // 10
-        )
-        opt = optax.adamw(learning_rate=schedule)
+        # schedule = optax.warmup_cosine_decay_schedule(
+        #     init_value=lr / 10,
+        #     peak_value=lr,
+        #     decay_steps=epochs,
+        #     end_value=lr / 10**3,
+        #     warmup_steps=epochs // 10
+        # )
+        # opt = optax.adamw(learning_rate=schedule)
+        opt = optax.adamw(lr)
     opt_state = opt.init(params)
 
     #### define an opt step
     @jax.jit
-    def opt_step(batch, _params, _opt_state):
+    def opt_step(batch, _params, _static, _opt_state):    
         @jax.value_and_grad
-        def loss_fn(_params):
-            _model = eqx.combine(_params, static)
-            return _model(batch)
+        def loss_fn(_params_):
+            _model = eqx.combine(_params_, static)
+            return _model.score(batch)
 
+        # regular old back prop
         loss, grads = loss_fn(_params)
         updates, _opt_state = opt.update(grads, _opt_state , params=_params)
         _params = optax.apply_updates(_params, updates)
-        return _params, _opt_state, loss
+        return _params, _static, _opt_state, loss
 
     # loop over epochs
     verbose = kwargs.get("verbose", False)
     print_iter = kwargs.get("print_iter", 50)
     loss_vals = []
+
     for epoch in range(epochs):
         batch_loss = []
         for batch in data_loader:
-            params, opt_state, loss = opt_step(batch[0], params, opt_state)
+            # randomly split batch
+            _batch = batch[0]
+            key, subkey = jax.random.split(key)
+            n_samples = _batch.shape[0] // 2
+            b1_inds = jax.random.choice(subkey, jnp.arange(_batch.shape[0]), (n_samples,), replace=False)
+            b2_inds = jnp.setdiff1d(jnp.arange(_batch.shape[0]), b1_inds)
+            batch_alpha = _batch[b1_inds]
+            batch_all = _batch[b2_inds]
+
+            # update alpha
+            params, static = update_alpha(batch_alpha, params, static)
+
+            # take step
+            params, static, opt_state, loss = opt_step(
+                batch_all, params, static, opt_state
+            )
             batch_loss.append(loss)
 
         loss_vals.append(sum(batch_loss) / len(batch_loss))
@@ -189,9 +206,10 @@ def train_mmd_kernel_score(key, mmd_model, samples, to_train, epochs, opt=None, 
         if verbose and epoch % print_iter == 0:
             print(f"epoch {epoch},loss: {loss}")
 
+    params, static = update_alpha(samples, params, static)
     model = eqx.combine(params, static)
-    mmd_model = eqx.tree_at(lambda t: t.k, mmd_model, model.k)
-    return mmd_model, model, jnp.array(loss_vals)
+
+    return model, model, jnp.array(loss_vals)
 
 
 # -------------------------------------- GP TRAINING ------------------------------------- #
