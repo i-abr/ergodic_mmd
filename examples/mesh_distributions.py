@@ -1,7 +1,7 @@
 from plyfile import PlyData
 import jax 
-import jax.numpy as np 
-import numpy as onp
+import jax.numpy as jnp 
+import numpy as np
 import open3d as o3d 
 import trimesh as tm
 
