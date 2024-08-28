@@ -12,7 +12,7 @@ class ErgodicMMDPlanner(object):
 
         x0 =  mesh._min_pnt
         xf =  mesh._max_pnt
-        T = 80
+        T = 625
         self.X_init = np.linspace(x0, xf, num=T, endpoint=True)
         self.sol, self.unflatten_X = ravel_pytree(self.X_init)
         self.bounds = (x0.min() * np.ones_like(self.sol), xf.max() * np.ones_like(self.sol))

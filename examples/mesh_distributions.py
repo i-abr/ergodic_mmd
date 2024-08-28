@@ -24,7 +24,7 @@ class BunnyMesh(object):
         _mid_pnt = verts.mean(axis=0)
         verts = (verts - _mid_pnt)/(_max_pnt-_min_pnt)
 
-        faces = np.array(onp.vstack(plydata['face']['vertex_indices']))
+        faces = np.array(np.vstack(plydata['face']['vertex_indices']))
 
         self.mesh = tm.Trimesh(vertices=verts, faces=faces)
         self.verts = self.mesh.vertices 
@@ -96,7 +96,7 @@ class SphereMesh(object):
         _mid_pnt = verts.mean(axis=0)
         verts = (verts - _mid_pnt)/(_max_pnt-_min_pnt)
 
-        faces = np.array(onp.vstack(plydata['face']['vertex_indices']))
+        faces = np.array(np.vstack(plydata['face']['vertex_indices']))
 
         self.mesh = tm.Trimesh(vertices=verts, faces=faces)
         self.verts = self.mesh.vertices 
