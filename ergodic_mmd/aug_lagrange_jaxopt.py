@@ -12,7 +12,7 @@ import numpy as onp
 # res = solver.run(init_params, l2reg=l2reg, X=X, y=y)
 jax.config.update('jax_enable_x64', True)
 class AugmentedLagrangeSolver(object):
-    def __init__(self, x0, loss, eq_constr, ineq_constr, args=None, step_size=1e-3, c=.1):
+    def __init__(self, x0, loss, eq_constr, ineq_constr, args=None, max_stepsize=1e-1, c=.1):
         self.def_args = args
         self.loss = loss 
         self._c_def = c
@@ -37,7 +37,7 @@ class AugmentedLagrangeSolver(object):
                 + a \
                 + b
 
-        self._unc_solver = jaxopt.NonlinearCG(fun=lagrangian, linesearch="zoom")
+        self._unc_solver = jaxopt.NonlinearCG(fun=lagrangian, linesearch="zoom", max_stepsize=max_stepsize)
         # self._unc_solver = jaxopt.LBFGS(fun=lagrangian, linesearch="backtracking")
 
         self._solver_state = self._unc_solver.init_state(self.solution, self.dual_solution, args, c)
