@@ -37,9 +37,9 @@ class AugmentedLagrangeSolver(object):
                 + a \
                 + b
 
-        self._unc_solver = jaxopt.NonlinearCG(fun=lagrangian, linesearch="zoom", max_stepsize=max_stepsize)#, maxls=1000)
+        # self._unc_solver = jaxopt.NonlinearCG(fun=lagrangian, linesearch="zoom", max_stepsize=max_stepsize)#, maxls=1000)
         # self._unc_solver = jaxopt.LBFGS(fun=lagrangian, linesearch="backtracking")
-        # self._unc_solver = jaxopt.GradientDescent(fun=lagrangian)
+        self._unc_solver = jaxopt.GradientDescent(fun=lagrangian)
 
         self._solver_state = self._unc_solver.init_state(self.solution, self.dual_solution, args, c)
 
