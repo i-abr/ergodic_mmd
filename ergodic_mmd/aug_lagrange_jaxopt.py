@@ -12,7 +12,7 @@ import numpy as onp
 # res = solver.run(init_params, l2reg=l2reg, X=X, y=y)
 jax.config.update('jax_enable_x64', True)
 class AugmentedLagrangeSolver(object):
-    def __init__(self, x0, loss, eq_constr, ineq_constr, args=None, max_stepsize=1e-1, c=.1):
+    def __init__(self, x0, loss, eq_constr, ineq_constr, args=None, max_stepsize=1, c=.1):
         self.def_args = args
         self.loss = loss 
         self._c_def = c
@@ -39,6 +39,7 @@ class AugmentedLagrangeSolver(object):
 
         self._unc_solver = jaxopt.NonlinearCG(fun=lagrangian, linesearch="zoom", max_stepsize=max_stepsize)#, maxls=1000)
         # self._unc_solver = jaxopt.LBFGS(fun=lagrangian, linesearch="backtracking")
+        # self._unc_solver = jaxopt.GradientDescent(fun=lagrangian)
 
         self._solver_state = self._unc_solver.init_state(self.solution, self.dual_solution, args, c)
 
@@ -55,8 +56,11 @@ class AugmentedLagrangeSolver(object):
                 c=c
             )
             _val, _dldx   = val_dldx(solution, dual_solution, args, c)
-            dual_solution['lam'] = np.clip(dual_solution['lam'] + c*eq_constr(solution, args),-1000,1000)
-            dual_solution['mu']  = np.clip(np.maximum(0, dual_solution['mu'] + c*ineq_constr(solution, args)), -100,100)
+            # dual_solution['lam'] = np.clip(dual_solution['lam'] + c*eq_constr(solution, args),-10000,10000)
+            # dual_solution['mu']  = np.clip(np.maximum(0, dual_solution['mu'] + c*ineq_constr(solution, args)), -10000,10000)
+            dual_solution['lam'] = dual_solution['lam'] + c*eq_constr(solution, args)
+            dual_solution['mu']  = np.maximum(0, dual_solution['mu'] + c*ineq_constr(solution, args))
+
 
             return solution, dual_solution, solver_state, _dldx
 
@@ -82,7 +86,8 @@ class AugmentedLagrangeSolver(object):
             for _key in _dldx:
                 _grad_total = _grad_total + np.linalg.norm(_dldx[_key])
             # print(_grad_total)
-            self.c = alpha*self.c
+            # self.c = np.clip(alpha*self.c, 0, 10000)
+            self.c = alpha * self.c
             print(k, _grad_total)
             if _grad_total < eps:
                 print('done in ', k, ' iterations', _grad_total)

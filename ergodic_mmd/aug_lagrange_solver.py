@@ -48,8 +48,8 @@ class AugmentedLagrangeSolver(object):
                 avg_sq_grad[_key] = avg_sq_grad[_key] * gamma + np.square(_dldx[_key]) * (1. - gamma)
                 solution[_key] = solution[_key] - step_size * _dldx[_key] / np.sqrt(avg_sq_grad[_key] + eps)
 
-            dual_solution['lam'] = np.clip(dual_solution['lam'] + c*eq_constr(solution, args),-1000,1000)
-            dual_solution['mu']  = np.clip(np.maximum(0., dual_solution['mu'] + c*ineq_constr(solution, args)), -1000,1000)
+            dual_solution['lam'] = np.clip(dual_solution['lam'] + c*eq_constr(solution, args),-10000,10000)
+            dual_solution['mu']  = np.clip(np.maximum(0., dual_solution['mu'] + c*ineq_constr(solution, args)), -10000,10000)
             return solution, dual_solution, avg_sq_grad, _val, _dldx
 
         self.lagrangian      = lagrangian
@@ -65,7 +65,7 @@ class AugmentedLagrangeSolver(object):
         return self.solution
         # return self._unravel(self._flat_solution)
 
-    def solve(self, args=None, max_iter=100000, eps=1e-5, alpha=1.001):
+    def solve(self, args=None, max_iter=100000, eps=1e-5, alpha=1.00001):
         if args is None:
             args = self.def_args
         _eps = 1.0
@@ -81,7 +81,7 @@ class AugmentedLagrangeSolver(object):
                 _N = _N + 1
             _grad_total = _grad_total/_N
             # print(_grad_total)
-            self.c = np.clip(alpha*self.c, 0, 1000)
+            self.c = np.clip(alpha*self.c, 0, 10000)
             print('iter ', k, ' loss ', _val, ' grad l2 norm ', _grad_total)
             # if _prev_val is None:
             #     _prev_val = _val
