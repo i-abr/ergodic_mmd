@@ -111,7 +111,7 @@ if __name__=='__main__':
 
     x0 = np.array([.5,-0.3])
     params = {'x' : x0}
-    opt = AugmentedLagrangeSolver(params,f,g,h, step_size=0.1)
+    opt = AugmentedLagrangeSolver(params,f,g,h)#, step_size=0.1)
     opt.solve(max_iter=1000)
-    sol = opt.get_solution()
+    sol = opt.solution
     print(f(sol), sol)
